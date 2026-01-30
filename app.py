@@ -41,6 +41,9 @@ if st.button("Calculate Duration", type="primary"):
                             st.metric(label="🐇 1.5x Speed", value=time_1_5x)
                         with col3:
                             st.metric(label="🚀 2x Speed", value=time_2x)
+                        
+                        saved_seconds = total_seconds - (total_seconds / 2)
+                        st.caption(f"💡 Watching at 2x speed saves you **{format_time(saved_seconds)}**!")
                 
                 else:
                     st.error("❌ Invalid Playlist URL. Please check the link.")

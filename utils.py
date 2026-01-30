@@ -53,16 +53,16 @@ def get_playlist_duration(api_key, playlist_id):
     return total_seconds, len(video_ids)
 
 def format_time(seconds):
-    hours = (seconds // 3600)
-    minutes = ((seconds % 3600) // 60)
-    secs = (seconds % 60)
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
 
     result = []
     if hours > 0:
-        result.append(f"{hours} h")
+        result.append(f"{hours}h")
     if minutes > 0:
-        result.append(f"{minutes} m")
+        result.append(f"{minutes}m")
     if secs > 0 or (hours == 0 and minutes == 0):
-        result.append(f"{secs} s")
+        result.append(f"{secs}s")
     
     return ', '.join(result)
