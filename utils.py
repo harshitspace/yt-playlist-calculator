@@ -13,6 +13,7 @@ def get_playlist_duration(api_key, playlist_id):
     youtube = build('youtube', 'v3', developerKey=api_key)
 
     video_ids = []
+    total_seconds = 0
     next_page_token = None
 
     while True:
@@ -32,23 +33,22 @@ def get_playlist_duration(api_key, playlist_id):
         if not next_page_token:
             break
 
-        total_seconds = 0
+    for i in range(0, len(video_ids), 50):
+        batch_ids = ','.join(video_ids[i:i+50])
 
-        for i in range(0, len(video_ids), 50):
-            batch_ids = ','.join(video_ids[i:i+50])
+        video_request = youtube.videos().list(
+            part='contentDetails',
+            id=batch_ids
+        )
 
-            video_request = youtube.videos().list(
-                part='contentDetails',
-                id=batch_ids
-            )
-            video_response = video_request.execute()
+        video_response = video_request.execute()
 
-            for item in video_response['items']:
-                duration_iso = item['contentDetails']['duration']
-                if duration_iso == 'POD':
-                    continue
-                seconds = parse_duration(duration_iso).total_seconds()
-                total_seconds += seconds
+        for item in video_response['items']:
+            duration_iso = item['contentDetails']['duration']
+            if duration_iso == 'P0D':
+                continue
+            seconds = parse_duration(duration_iso).total_seconds()
+            total_seconds += seconds
         
     return total_seconds, len(video_ids)
 
@@ -59,10 +59,10 @@ def format_time(seconds):
 
     result = []
     if hours > 0:
-        result.append(f"{hours} hours")
-    elif minutes > 0:
-        result.append(f"{minutes} minutes")
-    elif secs > 0:
-        result.append(f"{secs} seconds")
+        result.append(f"{hours} h")
+    if minutes > 0:
+        result.append(f"{minutes} m")
+    if secs > 0 or (hours == 0 and minutes == 0):
+        result.append(f"{secs} s")
     
     return ', '.join(result)
