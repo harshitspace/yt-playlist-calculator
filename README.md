@@ -1,4 +1,4 @@
-⚙️ Installation & Setup
+## ⚙️ Installation & Setup
 Follow these steps to run the app locally:
 
 1. Clone the repository
@@ -9,33 +9,33 @@ Follow these steps to run the app locally:
 
 4. Get a YouTube Data API Key
 
-Go to the .
+   - Go to the .
 
-Create a new project.
+   - Create a new project.
 
-Enable the YouTube Data API v3.
+   - Enable the YouTube Data API v3.
 
-Create credentials (API Key).
+   - Create credentials (API Key).
 
 5. Run the application
 
-💡 How to Use
-Launch the app using the command above.
+## 💡 How to Use
+ - Launch the app using the command above.
 
-Expand the "⚙️ API Settings" section in the sidebar.
+ - Expand the "⚙️ API Settings" section in the sidebar.
 
-Paste your Google API Key.
+ - Paste your Google API Key.
 
-Copy the URL of the YouTube playlist you want to analyze.
+ - Copy the URL of the YouTube playlist you want to analyze.
 
-Paste the URL into the input box and click "Calculate Duration".
+ - Paste the URL into the input box and click "Calculate Duration".
 
-🔮 Future Improvements
-[ ] Add support for "Watch Later" playlists (requires OAuth).
+## 🔮 Future Improvements
+ - [ ] Add support for "Watch Later" playlists (requires OAuth).
 
-[ ] Add a "Custom Speed" slider (e.g., 1.25x, 1.75x).
+ - [ ] Add a "Custom Speed" slider (e.g., 1.25x, 1.75x).
 
-[ ] Display individual video titles and durations in a table.
+ - [ ] Display individual video titles and durations in a table.
 
 🤝 Contributing
 Contributions are welcome! If you have suggestions or bug fixes, feel free to open an issue or submit a pull request.
