@@ -1,52 +1,286 @@
 import streamlit as st
-from utils import get_playlist_id, get_playlist_duration, format_time
+import pandas as pd
+import io
+import re
+from utils import get_playlist_id, get_playlist_details, format_time
+from planner import generate_study_plan
+from datetime import date
 
-st.set_page_config(page_title="YouTube Playlist Calculator", page_icon="📺")
+# ─── PDF Generation ──────────────────────────────────────────────────
+def generate_pdf(plan_text, playlist_name="YouTube Playlist"):
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table,
+        TableStyle, HRFlowable
+    )
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
-st.title("📺 Playlist Duration Calculator")
-st.write("See exactly how long that YouTube playlist is—and how much time you save at 2x speed!!")
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=A4,
+        rightMargin=2*cm, leftMargin=2*cm,
+        topMargin=2*cm, bottomMargin=2*cm
+    )
 
-with st.expander("⚙️ API Settings", expanded=False):
-    st.caption("You need a YouTube Data API Key to use this app.")
-    api_key = st.text_input("Enter API Key", type="password", help="Get this from Google Cloud Console")
+    styles = getSampleStyleSheet()
+    story = []
 
-url = st.text_input("🔗 Paste YouTube Playlist URL", placeholder="https://www.youtube.com/playlist?list=...")
+    # Custom styles
+    title_style = ParagraphStyle(
+        'CustomTitle', parent=styles['Title'],
+        fontSize=20, textColor=colors.HexColor('#1a1a2e'),
+        spaceAfter=6, alignment=TA_CENTER
+    )
+    subtitle_style = ParagraphStyle(
+        'Subtitle', parent=styles['Normal'],
+        fontSize=11, textColor=colors.HexColor('#555555'),
+        spaceAfter=16, alignment=TA_CENTER
+    )
+    h2_style = ParagraphStyle(
+        'H2', parent=styles['Heading2'],
+        fontSize=13, textColor=colors.HexColor('#e63946'),
+        spaceBefore=14, spaceAfter=6
+    )
+    body_style = ParagraphStyle(
+        'Body', parent=styles['Normal'],
+        fontSize=10, textColor=colors.HexColor('#333333'),
+        spaceAfter=6, leading=15
+    )
 
-if st.button("Calculate Duration", type="primary"):
+    # Title
+    story.append(Paragraph("📺 YouTube Playlist Study Planner", title_style))
+    story.append(Paragraph(f"AI-Generated Schedule • {date.today().strftime('%B %d, %Y')}", subtitle_style))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#e63946')))
+    story.append(Spacer(1, 12))
+
+    # Parse sections from markdown
+    sections = re.split(r'##\s+', plan_text)
+    for section in sections:
+        if not section.strip():
+            continue
+
+        lines = section.strip().split('\n')
+        heading = lines[0].strip().lstrip('#').strip()
+        content_lines = lines[1:]
+
+        story.append(Paragraph(heading, h2_style))
+
+        # Detect markdown table
+        table_lines = [l for l in content_lines if l.strip().startswith('|')]
+        non_table_lines = [l for l in content_lines if not l.strip().startswith('|') and l.strip()]
+
+        if table_lines:
+            # Parse markdown table into ReportLab table
+            rows = []
+            for tl in table_lines:
+                if re.match(r'^\s*\|[-| ]+\|\s*$', tl):
+                    continue  # Skip separator rows
+                cells = [c.strip() for c in tl.strip().strip('|').split('|')]
+                rows.append(cells)
+
+            if rows:
+                col_count = len(rows[0])
+                col_width = (A4[0] - 4*cm) / col_count
+
+                tbl = Table(rows, colWidths=[col_width] * col_count, repeatRows=1)
+                tbl.setStyle(TableStyle([
+                    # Header row
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e63946')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 10),
+                    ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                    # Body rows
+                    ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                    ('FONTSIZE', (0, 1), (-1, -1), 9),
+                    ('ALIGN', (0, 1), (-1, -1), 'CENTER'),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1),
+                     [colors.HexColor('#f8f9fa'), colors.white]),
+                    # Grid
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+                    ('TOPPADDING', (0, 0), (-1, -1), 6),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 8),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+                ]))
+                story.append(tbl)
+                story.append(Spacer(1, 8))
+
+        # Non-table text
+        for line in non_table_lines:
+            # Strip markdown bold/italic
+            clean = re.sub(r'\*\*(.+?)\*\*', r'\1', line)
+            clean = re.sub(r'\*(.+?)\*', r'\1', clean)
+            clean = clean.lstrip('*-•').strip()
+            if clean:
+                story.append(Paragraph(clean, body_style))
+
+        story.append(Spacer(1, 4))
+
+    # Footer
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#cccccc')))
+    story.append(Spacer(1, 6))
+    story.append(Paragraph(
+        "Generated by YT Study Planner • ytplaylistcalculator.streamlit.app",
+        ParagraphStyle('Footer', parent=styles['Normal'],
+                       fontSize=8, textColor=colors.grey, alignment=TA_CENTER)
+    ))
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.read()
+
+
+# ─── Page Config ─────────────────────────────────────────────────────
+st.set_page_config(page_title="YT Study Planner", page_icon="📺", layout="wide")
+
+st.title("📺 YouTube Playlist Study Planner")
+st.write("Calculate playlist duration — then let AI build your personalized study schedule.")
+
+# ─── Sidebar ─────────────────────────────────────────────────────────
+with st.sidebar:
+    st.header("⚙️ API Keys")
+    api_key = st.text_input("YouTube Data API Key", type="password")
+    gemini_key = st.text_input("Gemini API Key", type="password",
+                                help="Get from Google AI Studio — it's free")
+    st.divider()
+    st.caption("Your keys are never stored.")
+
+# ─── Main Input ──────────────────────────────────────────────────────
+url = st.text_input("🔗 Paste YouTube Playlist URL",
+                    placeholder="https://www.youtube.com/playlist?list=...")
+
+speed = st.select_slider("⚡ Playback Speed",
+                          options=[1.0, 1.25, 1.5, 1.75, 2.0],
+                          value=1.5)
+
+if st.button("📊 Analyze Playlist", type="primary"):
     if not api_key:
-        st.error("⚠️ Please enter your API Key in the settings above.")
+        st.error("⚠️ YouTube API Key missing.")
     elif not url:
-        st.error("⚠️ Please paste a URL first.")
+        st.error("⚠️ Paste a playlist URL.")
     else:
-        with st.spinner("Fetching video details from YouTube..."):
+        with st.spinner("Fetching playlist data..."):
             try:
                 pl_id = get_playlist_id(url)
-
-                if pl_id:
-                    total_seconds, video_count = get_playlist_duration(api_key, pl_id)
-
-                    time_1x = format_time(total_seconds)
-                    time_1_5x = format_time(total_seconds / 1.5)
-                    time_2x = format_time(total_seconds / 2)
-
-                    with st.container(border=True):
-                        st.subheader(f"✅ Found {video_count} videos")
-                        st.divider()
-
-                        col1, col2, col3 = st.columns(3)
-
-                        with col1:
-                            st.metric(label="🐢 Normal Speed (1x)", value=time_1x)
-                        with col2:
-                            st.metric(label="🐇 1.5x Speed", value=time_1_5x)
-                        with col3:
-                            st.metric(label="🚀 2x Speed", value=time_2x)
-                        
-                        saved_seconds = total_seconds - (total_seconds / 2)
-                        st.caption(f"💡 Watching at 2x speed saves you **{format_time(saved_seconds)}**!")
-                
-                else:
-                    st.error("❌ Invalid Playlist URL. Please check the link.")
-            
+                if not pl_id:
+                    st.error("❌ Invalid URL.")
+                    st.stop()
+                videos, total_seconds = get_playlist_details(api_key, pl_id)
+                st.session_state['videos'] = videos
+                st.session_state['total_seconds'] = total_seconds
+                st.session_state['speed'] = speed
+                st.session_state.pop('plan', None)  # Clear old plan on new fetch
             except Exception as e:
                 st.error(f"Something went wrong: {e}")
+
+# ─── Results ─────────────────────────────────────────────────────────
+if 'videos' in st.session_state:
+    videos = st.session_state['videos']
+    total_seconds = st.session_state['total_seconds']
+    speed = st.session_state['speed']
+
+    # Duration metrics
+    with st.container(border=True):
+        st.subheader(f"✅ {len(videos)} videos found")
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("🐢 1x Speed", format_time(total_seconds))
+        col2.metric("🏃 1.25x Speed", format_time(total_seconds / 1.25))
+        col3.metric("🐇 1.5x Speed", format_time(total_seconds / 1.5))
+        col4.metric("🚀 2x Speed", format_time(total_seconds / 2))
+
+    # Video table
+    with st.expander("📋 View All Videos", expanded=False):
+        df = pd.DataFrame([{
+            '#': i + 1,
+            'Title': v['title'],
+            f'Duration ({speed}x)': format_time(v['duration_seconds'] / speed)
+        } for i, v in enumerate(videos)])
+        st.dataframe(df, use_container_width=True, hide_index=True)
+
+    st.divider()
+
+    # ─── AI Study Planner ────────────────────────────────────────────
+    st.subheader("🤖 AI Study Planner")
+    st.write("Tell me your availability and deadline — I'll build your schedule.")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        weekday_mins = st.slider("⏰ Weekday availability (mins/day)", 15, 240, 60, step=15)
+        weekend_mins = st.slider("☀️ Weekend availability (mins/day)", 15, 360, 120, step=15)
+    with col2:
+        deadline = st.date_input("📅 Finish by", min_value=date.today())
+        deadline_days = (deadline - date.today()).days
+        st.info(f"That's **{deadline_days} days** from today.")
+        note = st.text_input("📝 Any note? (optional)",
+                              placeholder="e.g. I'm a slow note-taker, add buffer")
+
+    if st.button("🧠 Generate My Study Plan", type="primary"):
+        if not gemini_key:
+            st.error("⚠️ Gemini API Key missing from sidebar.")
+        elif deadline_days < 1:
+            st.error("⚠️ Pick a future deadline.")
+        else:
+            with st.spinner("AI is building your personalized schedule... (this may take ~30s)"):
+                try:
+                    plan = generate_study_plan(
+                        videos=videos,
+                        total_seconds=total_seconds,
+                        speed=speed,
+                        daily_weekday_mins=weekday_mins,
+                        daily_weekend_mins=weekend_mins,
+                        deadline_days=deadline_days,
+                        gemini_key=gemini_key,
+                        note=note
+                    )
+                    st.session_state['plan'] = plan
+                except Exception as e:
+                    st.error(f"AI generation failed: {e}")
+
+    # ─── Plan Display ────────────────────────────────────────────────
+    if 'plan' in st.session_state:
+        plan = st.session_state['plan']
+
+        st.success("✅ Your study plan is ready!")
+        st.divider()
+
+        # Render each ## section in its own bordered card
+        sections = re.split(r'(?=##\s)', plan)
+        for section in sections:
+            section = section.strip()
+            if not section:
+                continue
+            with st.container(border=True):
+                st.markdown(section)
+
+        st.divider()
+
+        # ─── Download Buttons ─────────────────────────────────────
+        st.markdown("### ⬇️ Download Your Plan")
+        dl_col1, dl_col2 = st.columns(2)
+
+        with dl_col1:
+            st.download_button(
+                label="📄 Download as Markdown (.md)",
+                data=plan,
+                file_name="study_plan.md",
+                mime="text/markdown",
+                use_container_width=True
+            )
+
+        with dl_col2:
+            with st.spinner("Preparing PDF..."):
+                try:
+                    pdf_bytes = generate_pdf(plan)
+                    st.download_button(
+                        label="📕 Download as PDF",
+                        data=pdf_bytes,
+                        file_name="study_plan.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
+                except Exception as e:
+                    st.error(f"PDF generation failed: {e}")
